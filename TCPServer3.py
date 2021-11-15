@@ -13,7 +13,7 @@ import sys, select
 # acquire server host and port from command line parameter
 if len(sys.argv) != 2:
     print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n");
-    exit(0);
+    exit(0)
 serverHost = "127.0.0.1"
 serverPort = int(sys.argv[1])
 serverAddress = (serverHost, serverPort)
