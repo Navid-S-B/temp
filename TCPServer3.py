@@ -31,6 +31,7 @@ serverSocket.bind(serverAddress)
     for client-2. Each client will be runing in a separate therad, which is the multi-threading
 """
 class ClientThread(Thread):
+    
     def __init__(self, clientAddress, clientSocket):
         Thread.__init__(self)
         self.clientAddress = clientAddress
@@ -78,7 +79,6 @@ class ClientThread(Thread):
     """
     def process_login(self):
         message = 'user credentials request'
-        print('[send] ' + message);
         self.clientSocket.send(message.encode())
 
 

@@ -1,26 +1,16 @@
 """
-    Sample code for Multi-Threaded Server
+    Code for Multi-Threaded Server
     Python 3
     Usage: python3 TCPserver3.py localhost 12000
     coding: utf-8
     
-    Author: Wei Song (Tutor for COMP3331/9331)
+    Author: Navid Bhuiyan
 """
 from socket import *
-from threading import Thread
+from threading import Thread, Lock
+import time
 import sys, select
-
-# acquire server host and port from command line parameter
-if len(sys.argv) != 2:
-    print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n");
-    exit(0)
-serverHost = "127.0.0.1"
-serverPort = int(sys.argv[1])
-serverAddress = (serverHost, serverPort)
-
-# define socket for the server side and bind address
-serverSocket = socket(AF_INET, SOCK_STREAM)
-serverSocket.bind(serverAddress)
+import json
 
 """
     Define multi-thread class for client
@@ -31,32 +21,53 @@ serverSocket.bind(serverAddress)
     for client-2. Each client will be runing in a separate therad, which is the multi-threading
 """
 class ClientThread(Thread):
-    def __init__(self, clientAddress, clientSocket):
+
+    """
+    Constructor
+    """
+    def __init__(self, clientAddress, clientSocket, timeout):
+        
         Thread.__init__(self)
         self.clientAddress = clientAddress
         self.clientSocket = clientSocket
         self.clientAlive = False
-        
-        print("===== New connection created for: ", clientAddress)
         self.clientAlive = True
-        
+        self.data = None
+        self.username = None
+        # Handle time class
+        self.timeout_duration = timeout
+        self.timeout = None
+        self.timeout_enabled = False
+    
+    """
+    Run server
+    """
     def run(self):
-        message = ''
         
+        message = ''
+
         while self.clientAlive:
-            # use recv() to receive message from the client
-            data = self.clientSocket.recv(1024)
-            message = data.decode()
+
+            # Handling timeout
+            if self.timeout_enabled:
+                difference = int(time.time() - self.timeout)
+                if difference == self.timeout_duration:
+                    self.timeout_enabled = False
+                    self.timeout = None
+                else:
+                    continue
             
+            self.data = self.clientSocket.recv(1024)
+            message = self.data.decode()
+
             # if the message from client is empty, the client would be off-line then set the client as offline (alive=Flase)
             if message == '':
                 self.clientAlive = False
-                print("===== the user disconnected - ", clientAddress)
+                print(f"===== the user at {self.username} disconnected =====")
                 break
-            
-            # handle message from the client
-            if message == 'login':
-                print("[recv] New login request")
+
+            # TODO: Change later
+            if message == "user credentials request":
                 self.process_login()
             elif message == 'download':
                 print("[recv] Download request")
@@ -68,26 +79,89 @@ class ClientThread(Thread):
                 print("[send] Cannot understand this message")
                 message = 'Cannot understand this message'
                 self.clientSocket.send(message.encode())
-    
+
     """
-        You can create more customized APIs here, e.g., logic for processing user authentication
-        Each api can be used to handle one specific function, for example:
-        def process_login(self):
-            message = 'user credentials request'
-            self.clientSocket.send(message.encode())
+    Convert json packets
+    """
+    def convert_json(self, json_str):
+        return json.loads(json_str)
+
+    """
+    Cache user data to share amongst threads
+    """
+    def save_data(self):
+        pass
+
+    """
+    Process the login.
     """
     def process_login(self):
-        message = 'user credentials request'
-        print('[send] ' + message);
+        # Tell client to log in
+        sub_message = "user credentials request"
+        self.clientSocket.send(sub_message.encode())
+        # Sort login
+        i = 0
+        data_lock = Lock()
+        f = open("credentials.txt", 'r+')
+        match_username = False
+        match_password = False
+        while (i < 3):
+            # Convert json
+            self.data = self.clientSocket.recv(1024)
+            data = self.data.decode()
+            data = self.convert_json(data)
+            for line in f.readlines():
+                credentials = line.split()
+                temp_username = credentials[0]
+                temp_password = credentials[1]
+                match_username = temp_username == data["username"]
+                match_password = temp_password == data["password"]
+                if match_username and match_password:
+                    self.username = temp_username
+                    message = sub_message + ' - ' + 'login successful'
+                    print(f"==== {self.username} logged on ====")
+                    self.clientSocket.send(message.encode())
+                if match_username:
+                    message = sub_message + ' - ' + "Invalid Password. Please try again"
+                    self.clientSocket.send(message.encode())
+                    break
+            if not match_username:
+                # Ensure synchronisation
+                self.username = data['username']
+                with data_lock:
+                    f.write(f"\n{data['username']},{data['password']}")
+                f.close()
+                message = sub_message + ' - ' + 'login successful'
+                self.clientSocket.send(message.encode())
+                print(f"==== {self.username} logged on ====")
+                return
+            i += 1
+        # Timeout
+        self.timeout = time.time()
+        self.timeout_enabled = True
+        message = "timeout - Your account is blocked due to multiple login failures. Please try again later"
         self.clientSocket.send(message.encode())
 
+if __name__ == "__main__":
+    
+    # acquire server host and port from command line parameter
+    if len(sys.argv) != 3:
+        print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n")
+        exit(0)
+    serverHost = "127.0.0.1"
+    serverPort = int(sys.argv[1])
+    serverTimeout = int(sys.argv[2])
+    serverAddress = (serverHost, serverPort)
 
-print("\n===== Server is running =====")
-print("===== Waiting for connection request from clients...=====")
+    # define socket for the server side and bind address
+    serverSocket = socket(AF_INET, SOCK_STREAM)
+    serverSocket.bind(serverAddress)
 
+    print("\n===== Server is running =====")
+    print("===== Waiting for connection request from clients...=====")
 
-while True:
-    serverSocket.listen()
-    clientSockt, clientAddress = serverSocket.accept()
-    clientThread = ClientThread(clientAddress, clientSockt)
-    clientThread.start()
+    while True:
+        serverSocket.listen()
+        clientSockt, clientAddress = serverSocket.accept()
+        clientThread = ClientThread(clientAddress, clientSockt, serverTimeout)
+        clientThread.start()
