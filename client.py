@@ -25,6 +25,7 @@ class Client():
         self.packet = "user credentials request"
         self.authenticated = False
         self.messaging_enabled = False
+        self.t1 = None
 
     """
     Recieve messages
@@ -53,8 +54,8 @@ class Client():
             if self.authenticated:
                 # Handle messages concurrently for live messaging
                 if not self.messaging_enabled:
-                    t1 = Thread(target = self.message_reciever)
-                    t1.start()
+                    self.t1 = Thread(target = self.message_reciever)
+                    self.t1.start()
                     self.messaging_enabled = True
                 command = input("===== Enter any valid commands =====\n")
                 self.command_handler(command)
@@ -65,23 +66,41 @@ class Client():
     def command_handler(self, command):
         if "message" in command:
             self.send_message(command)
+        elif "broadcast" in command:
+            self.broadcast(command)
         elif "whoelse" == command:
-            pass
+            self.whoelse(command)
+        elif "whoelsesince" in command:
+            self.whoelsesince(command)
+        elif "logout" == command:
+            self.logout(command)
+    """
+    Logout user.
+    """
+    def logout(self, command):
+        # End session
+        self.clientSocket.sendall(command.encode())
+        # self.clientSocket.recv(1024)
+        self.messageConnection = False
+        self.connection = False
 
     """
-    Convert command to json
+    Get active members since past time
     """
-    def send_message(self, command):
-        command_split = command.split(' ')
-        user = command_split[1]
-        message = " ".join(command_split[2:])
-        json_packet = {
-            "sender": self.username,
-            "recipient": user,
-            "message": message
-        }
-        json_str = json.dumps(json_packet)
-        self.clientMessageSocket.sendall(json_str.encode())
+    def whoelsesince(self, command):
+        self.clientSocket.sendall(command.encode())
+
+    """
+    Send message to broadcast
+    """
+    def broadcast(self, command):
+        self.clientSocket.sendall(command.encode())
+    
+    """
+    Find everyone else online
+    """
+    def whoelse(self, command):
+        self.clientSocket.sendall(command.encode())
 
     """
     Handles packets from server.

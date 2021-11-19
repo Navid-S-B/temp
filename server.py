@@ -68,7 +68,6 @@ class ClientThread(Thread):
             elif "whoelse" in packet:
                 self.whoelse()
             elif "logout" == packet:
-                print("hahahahahah")
                 self.logout()
 
     """
@@ -78,7 +77,6 @@ class ClientThread(Thread):
         info = self.load_info()
         info[self.username]['isActive'] = False
         info[self.username]['lastLoggedOn'] = datetime.now()
-        print(info)
         self.write_info(info)
         self.clientMessagesAlive = False
         self.clientAlive = False
@@ -192,7 +190,6 @@ class ClientThread(Thread):
         packet = sub_packet + ' - ' + 'Login Successful'
         self.clientSocket.send(packet.encode())
         self.handle_messages_threads()
-        print("hahahahahaha")
         print(f"==== {self.username} logged on ====")
 
     """
