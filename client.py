@@ -89,7 +89,6 @@ class Client():
     """
     def whoelsesince(self, command):
         self.clientSocket.sendall(command.encode())
-        self.clientMessageSocket.sendall("close".encode())
 
     """
     Send message to broadcast

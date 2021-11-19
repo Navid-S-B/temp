@@ -65,11 +65,18 @@ class ClientThread(Thread):
                 self.pull_messages()
             elif "broadcast" in packet:
                self.broadcast(packet)
-            elif "whoelse" in packet:
+            elif "whoelse" == packet:
                 self.whoelse()
             elif "logout" == packet:
                 self.logout()
-            
+            elif "whoelsesince" == packet:
+                self.whoelsesince()
+
+    """
+    Find out who was active in the past
+    """
+    def whoelsesince(self):
+        pass    
 
     """
     Logging out
@@ -184,7 +191,8 @@ class ClientThread(Thread):
             info[temp_username] = {
                 "isActive": True,
                 "packets": {},
-                "blocked": []
+                "blocked": [],
+                'lastLoggedOn': None
             }
         else:
             info[temp_username]["isActive"] = True
