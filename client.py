@@ -47,12 +47,13 @@ class Client():
         # Handle commands
         self.clientSocket.connect(self.serverAddress)
         while self.connection:
-            self.clientSocket.sendall(self.packet.encode())
-            # receive response from the server
-            # 1024 is a suggested packet size, you can specify it as 2048 or others
-            packet = self.clientSocket.recv(1024)
-            receivedpacket = packet.decode()
-            self.packet_handler(receivedpacket)
+            if not self.authenticated:
+                self.clientSocket.sendall(self.packet.encode())
+                # receive response from the server
+                # 1024 is a suggested packet size, you can specify it as 2048 or others
+                packet = self.clientSocket.recv(1024)
+                receivedpacket = packet.decode()
+                self.packet_handler(receivedpacket)
             if self.authenticated:
                 # Handle messages concurrently for live messaging
                 if not self.messaging_enabled:
