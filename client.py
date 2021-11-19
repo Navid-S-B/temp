@@ -65,7 +65,7 @@ class Client():
     def command_handler(self, command):
         if "message" in command:
             self.send_message(command)
-        else:
+        elif "whoelse" == command:
             pass
 
     """

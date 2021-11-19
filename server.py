@@ -13,7 +13,7 @@ import sys, select
 import json
 import pickle
 import os.path
-from random import randint
+from datetime import datetime
 
 CLIENTSOCKETS = {}
 
@@ -56,40 +56,61 @@ class ClientThread(Thread):
         packet = ''
         while self.clientAlive:
 
-            # Handling timeout
-            difference = int(time.time() - self.timeout)
-            if difference == self.timeout_duration and packet != '':
-                packet = ''
-            else:
-                self.timeout = time.time()
-            
             self.data = self.clientSocket.recv(1024)
             packet = self.data.decode()
-
-            # if the packet from client is empty, the client would be off-line then set the client as offline (alive=Flase)
-            if packet == '':
-                self.clientAlive = False
-                if self.username is not None:
-                    info = self.load_info()
-                    info[self.username]["isActive"] = False
-                    self.write_info(info)
-                print(f"===== the user at {self.username} disconnected =====")
-                packet = "User Timeout, Logging Off"
-                # Kill of other thread
-                self.clientMessagesAlive = False
-                self.clientSocket.sendall(packet.encode())
-                break
 
             # TODO: Change later
             if packet == "user credentials request":
                 self.process_login()
-                # self.pull_messages()
-            else:
-                print("[recv] " + packet)
-                print("[send] Cannot understand this packet")
-                packet = 'Cannot understand this packet'
-                self.clientSocket.send(packet.encode())
+                self.pull_messages()
+            elif "broadcast" in packet:
+               self.broadcast(packet)
+            elif "whoelse" in packet:
+                self.whoelse()
+            elif "logout" == packet:
+                print("hahahahahah")
+                self.logout()
 
+    """
+    Logging out
+    """
+    def logout(self):
+        info = self.load_info()
+        info[self.username]['isActive'] = False
+        info[self.username]['lastLoggedOn'] = datetime.now()
+        print(info)
+        self.write_info(info)
+        self.clientMessagesAlive = False
+        self.clientAlive = False
+        self.clientSocket.sendall("Finished".encode())
+
+    """
+    Find every active member online
+    """
+    def whoelse(self):
+        info = self.load_info()
+        for user in info.keys():
+            if (info[user]["isActive"]
+                and self.username not in info[user]["blocked"]
+                and user != self.username):
+                self.clientMessageSocket.sendall(f"{user} is active".encode())
+
+    """
+    Broadcast to all active users.
+    """
+    def broadcast(self, packet):
+        info = self.load_info()
+        message = " ".join(packet.split(' ')[1:])
+        global CLIENTSOCKETS
+        isBlocked = False
+        for key in CLIENTSOCKETS.keys():
+            if self.username not in info[key]['blocked'] and self.username != key:
+                self.send_message(CLIENTSOCKETS[key], self.username, message)
+            elif self.username in info[key]['blocked']:
+                isBlocked = True
+        if isBlocked:
+            self.clientMessageSocket.sendall("Your broadcast could not reach all users".encode())
+    
     """
     Convert json packets
     """
