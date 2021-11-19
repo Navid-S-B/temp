@@ -15,6 +15,8 @@ import pickle
 import os.path
 from random import randint
 
+CLIENTSOCKETS = {}
+
 """
     Define multi-thread class for client
     This class would be used to define the instance for each connection from each client
@@ -40,11 +42,8 @@ class ClientThread(Thread):
         self.clientAlive = True
         self.username = None
         # Handle time class
-        self.timeout_duration = timeout
+        self.timeout_duration = serverTimeout
         self.timeout = time.time()
-    
-    def get_username(self):
-        return self.username
 
     """
     Run server
@@ -84,7 +83,7 @@ class ClientThread(Thread):
             # TODO: Change later
             if packet == "user credentials request":
                 self.process_login()
-                self.pull_messages()
+                # self.pull_messages()
             else:
                 print("[recv] " + packet)
                 print("[send] Cannot understand this packet")
@@ -168,11 +167,10 @@ class ClientThread(Thread):
         # Synchronise save
         self.write_info(info)
         self.username = temp_username
-        self.setName(self.username)
         # Activate thread for messaging
         packet = sub_packet + ' - ' + 'Login Successful'
         self.clientSocket.send(packet.encode())
-        self.handle_messages()
+        self.handle_messages_threads()
         print(f"==== {self.username} logged on ====")
 
     """
@@ -188,16 +186,16 @@ class ClientThread(Thread):
     """
     Create message thread on instance of login
     """
-    def handle_messages(self):
+    def handle_messages_threads(self):
         self.serverMessageSocket.listen()
         self.clientMessageSocket, clientMessageAddress = self.serverMessageSocket.accept()
+        # Save socket
+        global CLIENTSOCKETS
+        CLIENTSOCKETS[self.username] = self.clientMessageSocket
         self.clientMessagesAlive = True
         # Handle Thread to deal with sending messages
         t1 = Thread(target = self.handle_messages)
         t1.start()
-        # Handle thread to always read messages
-        t2 = Thread(target=self.recieve_message)
-        t2.start()
 
     """
     Get messages uploaded and distributed
@@ -227,15 +225,13 @@ class ClientThread(Thread):
                 self.write_info(info)
             # Send message via serverxw
             else:
-                for client in enumerate():
-                    if client.getName() == recipient:
-                        ClientThread(client).send_message(sender, message)
-                        break
+                global CLIENTSOCKETS
+                self.send_message(CLIENTSOCKETS[recipient], sender, message)
     """
     Send messages in between
     """
-    def send_message(self, sender, message):
-        self.clientMessageSocket.sendall(f"{sender}: {message}".encode())
+    def send_message(tempSocket, sender, message):
+        tempSocket.sendall(f"{sender}: {message}".encode())
 
     """
     Recieve cached messages
@@ -326,4 +322,4 @@ if __name__ == "__main__":
         clientSockt, clientAddress = serverSocket.accept()
         clientThread = ClientThread(clientAddress, clientSockt, serverMessageSocket, serverTimeout)
         clientThread.start()
-
+    
