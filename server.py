@@ -7,7 +7,7 @@
     Author: Navid Bhuiyan
 """
 from socket import *
-from threading import Thread, Lock, enumerate
+from threading import Thread, Lock, active_count
 import time
 import sys, select
 import json
@@ -69,6 +69,7 @@ class ClientThread(Thread):
                 self.whoelse()
             elif "logout" == packet:
                 self.logout()
+            
 
     """
     Logging out
@@ -81,6 +82,10 @@ class ClientThread(Thread):
         self.clientMessagesAlive = False
         self.clientAlive = False
         self.clientSocket.sendall("Finished".encode())
+        del CLIENTSOCKETS[self.username]
+        # Quit entire thread
+        print(active_count())
+        sys.exit(0)
 
     """
     Find every active member online
@@ -213,7 +218,7 @@ class ClientThread(Thread):
         CLIENTSOCKETS[self.username] = self.clientMessageSocket
         self.clientMessagesAlive = True
         # Handle Thread to deal with sending messages
-        t1 = Thread(target = self.handle_messages)
+        t1 = Thread(target = self.handle_messages, daemon = True)
         t1.start()
 
     """
@@ -223,11 +228,17 @@ class ClientThread(Thread):
         while self.clientMessagesAlive:
             # Recieve messages
             self.data = self.clientMessageSocket.recv(1024)
-            packet = self.data.decode()
-            packet = json.loads(packet)
-            recipient = packet['recipient']
-            message = packet['message']
-            sender = packet['sender']
+            # Remove errors when exitting
+            try:
+                packet = self.data.decode()
+                packet = json.loads(packet)
+                recipient = packet['recipient']
+                message = packet['message']
+                sender = packet['sender']
+            except:
+                recipient = None
+                message = None
+                sender = None
             info = self.load_info()
             if recipient == sender:
                 self.clientMessageSocket.sendall(f"Cannot send message to yourself!".encode())

@@ -34,6 +34,8 @@ class Client():
         self.clientMessageSocket.connect(self.serverMessagesAddress)
         while self.messageConnection:
             packet = self.clientMessageSocket.recv(1024)
+            if "cloee" in packet.decode():
+                break
             receivedpacket = packet.decode()
             print(receivedpacket)
 
@@ -54,7 +56,7 @@ class Client():
             if self.authenticated:
                 # Handle messages concurrently for live messaging
                 if not self.messaging_enabled:
-                    self.t1 = Thread(target = self.message_reciever)
+                    self.t1 = Thread(target = self.message_reciever, daemon = True)
                     self.t1.start()
                     self.messaging_enabled = True
                 command = input("===== Enter any valid commands =====\n")
@@ -80,15 +82,14 @@ class Client():
     def logout(self, command):
         # End session
         self.clientSocket.sendall(command.encode())
-        # self.clientSocket.recv(1024)
-        self.messageConnection = False
-        self.connection = False
+        sys.exit(0)
 
     """
     Get active members since past time
     """
     def whoelsesince(self, command):
         self.clientSocket.sendall(command.encode())
+        self.clientMessageSocket.sendall("close".encode())
 
     """
     Send message to broadcast
