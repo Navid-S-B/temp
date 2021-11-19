@@ -26,6 +26,7 @@ class Client():
         self.authenticated = False
         self.messaging_enabled = False
         self.t1 = None
+        self.t2 = None
 
     """
     Recieve messages
@@ -44,25 +45,31 @@ class Client():
     """
     def start(self):
 
-        # Handle commands
         self.clientSocket.connect(self.serverAddress)
+        # Thread commands from the server
+        self.t1 = Thread(target = self.message_reciever, daemon = True)
+        # Handle commands
         while self.connection:
-            if not self.authenticated:
-                self.clientSocket.sendall(self.packet.encode())
-                # receive response from the server
-                # 1024 is a suggested packet size, you can specify it as 2048 or others
-                packet = self.clientSocket.recv(1024)
-                receivedpacket = packet.decode()
-                self.packet_handler(receivedpacket)
-            if self.authenticated:
-                # Handle messages concurrently for live messaging
-                if not self.messaging_enabled:
-                    self.t1 = Thread(target = self.message_reciever, daemon = True)
-                    self.t1.start()
-                    self.messaging_enabled = True
-                command = input("===== Enter any valid commands =====\n")
-                self.command_handler(command)
+            # Handle messages concurrently for live messaging
+            if not self.messaging_enabled:
+                self.t2 = Thread(target = self.message_reciever, daemon = True)
+                self.t2.start()
+                self.messaging_enabled = True
+            command = input("===== Enter any valid commands =====\n")
+            self.command_handler(command)
     
+    """
+    Handle packets
+    """
+    def packet_handler(self):
+        while self.connection:
+            self.clientSocket.sendall(self.packet.encode())
+            # receive response from the server
+            # 1024 is a suggested packet size, you can specify it as 2048 or others
+            packet = self.clientSocket.recv(1024)
+            receivedpacket = packet.decode()
+            self.packet_handler(receivedpacket)
+
     """
     Handles commands made from user
     """
@@ -77,6 +84,20 @@ class Client():
             self.whoelsesince(command)
         elif "logout" == command:
             self.logout(command)
+        elif "block" in command:
+            self.block(command)
+        elif "startprivate" in command:
+            self.startPrivate(command)
+
+    def startPrivate(self, command):
+        self.clientSocket.sendall(command.encode())
+    
+    """
+    Block users.
+    """
+    def block(self, command):
+        self.clientSocket.sendall(command.encode())
+    
     """
     Logout user.
     """
@@ -104,6 +125,21 @@ class Client():
         self.clientSocket.sendall(command.encode())
 
     """
+    Send messages
+    """
+    def send_message(self, command):
+        command_split = command.split(' ')
+        user = command_split[1]
+        message = " ".join(command_split[2:])
+        json_packet = {
+            "sender": self.username,
+            "recipient": user,
+            "message": message
+        }
+        json_str = json.dumps(json_packet)
+        self.clientMessageSocket.sendall(json_str.encode())
+
+    """
     Handles packets from server.
     """
     def packet_handler(self, receivedpacket):
@@ -129,9 +165,10 @@ class Client():
                 print("Welcome to the greatest messaging application ever!")
             else:
                 self.login()
-        elif "download filename" in received_function:
-            print("[recv] You need to provide the file name you want to download")
-
+        
+    """
+    Trigger login prompt
+    """
     def login(self):
         credentials = {}
         self.username = input("Username: ")

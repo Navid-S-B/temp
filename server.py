@@ -7,13 +7,14 @@
     Author: Navid Bhuiyan
 """
 from socket import *
-from threading import Thread, Lock, active_count
+from threading import Thread, Lock
 import time
-import sys, select
+import sys
 import json
 import pickle
 import os.path
-from datetime import datetime
+from datetime import datetime, timedelta
+from random import randint
 
 CLIENTSOCKETS = {}
 
@@ -29,10 +30,13 @@ class ClientThread(Thread):
 
     """
     Constructor
+
+    TODO: Add timeout and blockout
     """
-    def __init__(self, clientAddress, clientSocket, serverMessageSocket, serverTimeout):
+    def __init__(self, clientAddress, clientSocket, serverMessageSocket, serverBlockout, serverTimeout):
         Thread.__init__(self)
         self.serverMessageSocket = serverMessageSocket
+        self.serverBlockout = serverBlockout
         self.clientAddress = clientAddress
         self.clientSocket = clientSocket
         self.clientMessageSocket = None
@@ -41,9 +45,6 @@ class ClientThread(Thread):
         self.clientMessagesAlive = False
         self.clientAlive = True
         self.username = None
-        # Handle time class
-        self.timeout_duration = serverTimeout
-        self.timeout = time.time()
 
     """
     Run server
@@ -70,13 +71,67 @@ class ClientThread(Thread):
             elif "logout" == packet:
                 self.logout()
             elif "whoelsesince" == packet:
-                self.whoelsesince()
+                self.whoelsesince(packet)
+            elif "block" in packet:
+                self.block(packet)
+            elif "startprivate" in packet:
+                self.startPrivate(packet)
+    
+    """
+    Verify if private link is possible
+    """
+    def startPrivate(self, packet):
+        info = self.load_info()
+        user = packet.split()[1]
+        # Check
+        if user not in info.keys():
+            self.clientMessageSocket.sendall(f"Cannot have a private chat with unknown {user}".encode())
+            self.clientSocket.sendall("False".encode())
+        if self.username in info[user]['blocked']:
+            self.clientMessageSocket.sendall(f"Cannot have a private chat with {user}".encode())
+            self.clientSocket.sendall("False".encode())
+        if not info[user]['isActive']:
+            self.clientMessageSocket.sendall(f"User is nort active to have a private chat with {user}".encode())
+            self.clientSocket.sendall("False".encode())
+        self.clientSocket.sendall("True".encode())
+
+    """
+    Block users
+    """
+    def block(self, packet):
+        info = self.load_info()
+        toBlock = packet.split(' ')[1]
+        # Check
+        if toBlock == self.username:
+            self.clientMessageSocket.sendall("You cannot block yourself".encode())
+            return
+        if toBlock not in info.keys():
+            self.clientMessageSocket.sendall("Blocking invalid user".encode())
+            return
+        blocked = info[self.username]['blocked']
+        blocked.append(toBlock)
+        self.write_info(info)
+        self.clientMessageSocket.sendall(f"You have blocked {toBlock}".encode())
 
     """
     Find out who was active in the past
     """
-    def whoelsesince(self):
-        pass    
+    def whoelsesince(self, packet):
+        packet = packet.split()
+        t = packet[1]
+        info = self.load_info()
+        for user in info.keys():
+            if (user != self.username):
+                continue
+            elif (info[user]["isActive"]
+                and self.username not in info[user]["blocked"]):
+                self.clientMessageSocket.sendall(f"{user} is active".encode())
+            else:
+                tNow = datetime.now()
+                tPrev = tNow - timedelta(seconds = t)
+                if (info[user]['lastLoggedOn'] >= tPrev):
+                    self.clientMessageSocket.sendall(f"{user} was active {t} seconds ago".encode())
+
 
     """
     Logging out
@@ -91,7 +146,6 @@ class ClientThread(Thread):
         self.clientSocket.sendall("Finished".encode())
         del CLIENTSOCKETS[self.username]
         # Quit entire thread
-        print(active_count())
         sys.exit(0)
 
     """
@@ -203,7 +257,7 @@ class ClientThread(Thread):
         packet = sub_packet + ' - ' + 'Login Successful'
         self.clientSocket.send(packet.encode())
         self.handle_messages_threads()
-        print(f"==== {self.username} logged on ====")
+        # print(f"==== {self.username} logged on ====")
 
     """
     Check if user is active
@@ -339,11 +393,12 @@ if __name__ == "__main__":
     
     # acquire server host and port from command line parameter
     if len(sys.argv) != 3:
-        print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n")
+        # print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n")
         exit(0)
     serverHost = "127.0.0.1"
     serverPort = int(sys.argv[1])
-    serverTimeout = int(sys.argv[2])
+    serverBlockout = int(sys.argv[1])
+    serverTimeout = int(sys.argv[3])
     serverAddress = (serverHost, serverPort)
 
     # define socket for the server side and bind address
@@ -352,12 +407,12 @@ if __name__ == "__main__":
     serverMessageSocket = socket(AF_INET, SOCK_STREAM)
     serverMessageSocket.bind((serverAddress[0], serverAddress[1] + 100))
 
-    print("\n===== Server is running =====")
-    print("===== Waiting for connection request from clients...=====")
+    # print("\n===== Server is running =====")
+    # print("===== Waiting for connection request from clients...=====")
 
     while True:
         serverSocket.listen()
         clientSockt, clientAddress = serverSocket.accept()
-        clientThread = ClientThread(clientAddress, clientSockt, serverMessageSocket, serverTimeout)
+        clientThread = ClientThread(clientAddress, clientSockt, serverMessageSocket, serverBlockout, serverTimeout)
         clientThread.start()
     
