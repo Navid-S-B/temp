@@ -7,12 +7,13 @@
     Author: Navid Bhuiyan
 """
 from socket import *
-from threading import Thread, Lock
+from threading import Thread, Lock, enumerate
 import time
 import sys, select
 import json
 import pickle
 import os.path
+from random import randint
 
 """
     Define multi-thread class for client
@@ -27,12 +28,13 @@ class ClientThread(Thread):
     """
     Constructor
     """
-    def __init__(self, clientAddress, clientSocket, serverTimeout):
+    def __init__(self, clientAddress, clientSocket, serverMessageSocket, serverTimeout):
         Thread.__init__(self)
+        self.serverMessageSocket = serverMessageSocket
         self.clientAddress = clientAddress
         self.clientSocket = clientSocket
         self.clientMessageSocket = None
-        self.clientMessageAddress = (clientAddress[0], clientAddress[1] + 100)
+        self.clientMessageAddress = None
         self.timeout = serverTimeout
         self.clientMessagesAlive = False
         self.clientAlive = True
@@ -82,6 +84,7 @@ class ClientThread(Thread):
             # TODO: Change later
             if packet == "user credentials request":
                 self.process_login()
+                self.pull_messages()
             else:
                 print("[recv] " + packet)
                 print("[send] Cannot understand this packet")
@@ -132,9 +135,10 @@ class ClientThread(Thread):
     """
     def load_info(self):
         data_lock = Lock()
-        f = open("cache.pickle", "rb")
-        info = pickle.load(f)
-        f.close()
+        with data_lock:
+            f = open("cache.pickle", "rb")
+            info = pickle.load(f)
+            f.close()
         return info
 
     """
@@ -164,8 +168,11 @@ class ClientThread(Thread):
         # Synchronise save
         self.write_info(info)
         self.username = temp_username
+        self.setName(self.username)
         # Activate thread for messaging
-        self.create_messages_thread()
+        packet = sub_packet + ' - ' + 'Login Successful'
+        self.clientSocket.send(packet.encode())
+        self.handle_messages()
         print(f"==== {self.username} logged on ====")
 
     """
@@ -181,24 +188,27 @@ class ClientThread(Thread):
     """
     Create message thread on instance of login
     """
-    def create_messages_thread(self):
+    def handle_messages(self):
+        self.serverMessageSocket.listen()
+        self.clientMessageSocket, clientMessageAddress = self.serverMessageSocket.accept()
+        self.clientMessagesAlive = True
+        # Handle Thread to deal with sending messages
         t1 = Thread(target = self.handle_messages)
         t1.start()
+        # Handle thread to always read messages
+        t2 = Thread(target=self.recieve_message)
+        t2.start()
 
     """
     Get messages uploaded and distributed
     """
     def handle_messages(self):
-        self.clientMessageSocket = socket(AF_INET, SOCK_STREAM)
-        self.clientMessageSocket.bind(self.clientMessageAddress)
-        self.clientMessageSocket.listen()
-        self.clientMessageSocket.accept()
-        self.clientMessagesAlive = True
-        while self.clientMessagesAlive:
-            # Send messages
-            self.send_message()
+        self.serverMessageSocket.listen()
+        clientMessageSocket, clientMessageAddress = self.serverMessageSocket.accept()
+        clientMessagesAlive = True
+        while clientMessagesAlive:
             # Recieve messages
-            self.data = self.clientMessageSocket.recv(1024)
+            self.data = clientMessageSocket.recv(1024)
             packet = self.data.decode()
             packet = json.loads(packet)
             recipient = packet['recipient']
@@ -206,29 +216,37 @@ class ClientThread(Thread):
             sender = packet['sender']
             info = self.load_info()
             if recipient not in info:
-                self.clientMessageSocket.sendall(f"{recipient} does not exist")
+                clientMessageSocket.sendall(f"{recipient} does not exist")
             elif sender in info[recipient]['blocked']:
-                self.clientMessageSocket.sendall(f"Message cannot be forwarded")
-            else:
+                clientMessageSocket.sendall(f"Message cannot be forwarded")
+            elif not info[recipient]['isActive']:
                 if sender not in info[recipient]['messages']:
                     info[recipient]['messages'][sender] = [message]
                 else:
-                    info[recipient]['messages'][sender].append(message)
-            self.write_info(info)
+                    info[recipient]['messages'][sender].append(message)            
+                self.write_info(info)
+            # Send message via serverxw
+            else:
+                for client in enumerate():
+                    if client.getName() == recipient:
+                        ClientThread(client).send_message(sender, message)
+                        break
+    """
+    Send messages in between
+    """
+    def send_message(self, sender, message):
+        self.clientMessageSocket.sendall(f"{sender}: {message}".encode())
 
     """
-    Recieve messages
+    Recieve cached messages
     """
-    def send_message(self):
+    def pull_messages(self):
         info = self.load_info()
         # Use name of thread to get username
-        messages = info[self.getName()]['messages']
+        messages = info[self.username]['messages']
         for user in messages.keys():
             for message in messages[user]:
-                notBlocked = user not in info[self.username]['blocked'] and self.username not in info[user]['blocked']
-                if notBlocked:
-                    print("message sent")
-                    self.clientMessageSocket.sendall(f"{user}: {message}".encode()) 
+                self.clientMessageSocket.sendall(f"{user}: {message}".encode()) 
             # Empty buffered messages
             messages[user] = []
         # Remove buffered messages
@@ -264,8 +282,6 @@ class ClientThread(Thread):
                 match_password = temp_password == self.data["password"]
                 if match_username and match_password:
                     self.log_user(sub_packet, temp_username)
-                    packet = sub_packet + ' - ' + 'Login Successful'
-                    self.clientSocket.send(packet.encode())
                     return
                 if match_username:
                     packet = sub_packet + ' - ' + "Invalid Password. Please try again"
@@ -285,8 +301,6 @@ class ClientThread(Thread):
         packet = "timeout - Your account is blocked due to multiple login failures. Please try again later"
         self.clientSocket.send(packet.encode())
 
-
-
 if __name__ == "__main__":
     
     # acquire server host and port from command line parameter
@@ -301,15 +315,15 @@ if __name__ == "__main__":
     # define socket for the server side and bind address
     serverSocket = socket(AF_INET, SOCK_STREAM)
     serverSocket.bind(serverAddress)
+    serverMessageSocket = socket(AF_INET, SOCK_STREAM)
+    serverMessageSocket.bind((serverAddress[0], serverAddress[1] + 100))
 
     print("\n===== Server is running =====")
     print("===== Waiting for connection request from clients...=====")
 
-    no_threads = 0
-
     while True:
         serverSocket.listen()
         clientSockt, clientAddress = serverSocket.accept()
-        clientThread = ClientThread(clientAddress, clientSockt, serverTimeout)
+        clientThread = ClientThread(clientAddress, clientSockt, serverMessageSocket, serverTimeout)
         clientThread.start()
 
