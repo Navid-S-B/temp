@@ -171,6 +171,7 @@ class ClientThread(Thread):
         packet = sub_packet + ' - ' + 'Login Successful'
         self.clientSocket.send(packet.encode())
         self.handle_messages_threads()
+        print("hahahahahaha")
         print(f"==== {self.username} logged on ====")
 
     """
@@ -201,12 +202,9 @@ class ClientThread(Thread):
     Get messages uploaded and distributed
     """
     def handle_messages(self):
-        self.serverMessageSocket.listen()
-        clientMessageSocket, clientMessageAddress = self.serverMessageSocket.accept()
-        clientMessagesAlive = True
-        while clientMessagesAlive:
+        while self.clientMessagesAlive:
             # Recieve messages
-            self.data = clientMessageSocket.recv(1024)
+            self.data = self.clientMessageSocket.recv(1024)
             packet = self.data.decode()
             packet = json.loads(packet)
             recipient = packet['recipient']
@@ -214,9 +212,9 @@ class ClientThread(Thread):
             sender = packet['sender']
             info = self.load_info()
             if recipient not in info:
-                clientMessageSocket.sendall(f"{recipient} does not exist")
+                self.clientMessageSocket.sendall(f"{recipient} does not exist")
             elif sender in info[recipient]['blocked']:
-                clientMessageSocket.sendall(f"Message cannot be forwarded")
+                self.clientMessageSocket.sendall(f"Message cannot be forwarded")
             elif not info[recipient]['isActive']:
                 if sender not in info[recipient]['messages']:
                     info[recipient]['messages'][sender] = [message]
@@ -230,7 +228,7 @@ class ClientThread(Thread):
     """
     Send messages in between
     """
-    def send_message(tempSocket, sender, message):
+    def send_message(self, tempSocket, sender, message):
         tempSocket.sendall(f"{sender}: {message}".encode())
 
     """
@@ -288,6 +286,7 @@ class ClientThread(Thread):
                 self.log_user(sub_packet, temp_username)
                 with data_lock:
                     f.write(f"\n{temp_username},{temp_password}")
+                return
             # Reset variables
             i += 1
             f.seek(0)
