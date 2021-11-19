@@ -211,10 +211,12 @@ class ClientThread(Thread):
             message = packet['message']
             sender = packet['sender']
             info = self.load_info()
-            if recipient not in info:
-                self.clientMessageSocket.sendall(f"{recipient} does not exist")
+            if recipient == sender:
+                self.clientMessageSocket.sendall(f"Cannot send message to yourself!".encode())
+            elif recipient not in info:
+                self.clientMessageSocket.sendall(f"{recipient} does not exist".encode())
             elif sender in info[recipient]['blocked']:
-                self.clientMessageSocket.sendall(f"Message cannot be forwarded")
+                self.clientMessageSocket.sendall(f"Message cannot be forwarded".encode())
             elif not info[recipient]['isActive']:
                 if sender not in info[recipient]['messages']:
                     info[recipient]['messages'][sender] = [message]
