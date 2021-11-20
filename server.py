@@ -386,6 +386,7 @@ class ClientThread(Thread):
             i += 1
             f.seek(0)
         # Timeout
+        f.close()
         packet = "timeout - Your account is blocked temporarily"
         self.clientSocket.send(packet.encode())
 
