@@ -63,7 +63,9 @@ class ClientThread(Thread):
             # TODO: Change later
             if packet == "user credentials request":
                 self.process_login()
-                self.pull_messages()
+                # If login unsuccessful not load messages
+                if self.username is not None:
+                    self.pull_messages()
             elif "broadcast" in packet:
                self.broadcast(packet)
             elif "whoelse" == packet:
@@ -384,15 +386,13 @@ class ClientThread(Thread):
             i += 1
             f.seek(0)
         # Timeout
-        self.timeout = time.time()
-        self.timeout_enabled = True
-        packet = "timeout - Your account is blocked due to multiple login failures. Please try again later"
+        packet = "timeout - Your account is blocked temporarily"
         self.clientSocket.send(packet.encode())
 
 if __name__ == "__main__":
     
     # acquire server host and port from command line parameter
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         # print("\n===== Error usage, python3 TCPServer3.py SERVER_PORT ======\n")
         exit(0)
     serverHost = "127.0.0.1"

@@ -25,9 +25,7 @@ class Client():
         self.packet = "user credentials request"
         self.authenticated = False
         self.messaging_enabled = False
-        self.t1 = None
-        self.t2 = None
-
+    
     """
     Recieve messages
     """
@@ -46,29 +44,23 @@ class Client():
     def start(self):
 
         self.clientSocket.connect(self.serverAddress)
-        # Thread commands from the server
-        self.t1 = Thread(target = self.message_reciever, daemon = True)
         # Handle commands
         while self.connection:
             # Handle messages concurrently for live messaging
-            if not self.messaging_enabled:
-                self.t2 = Thread(target = self.message_reciever, daemon = True)
-                self.t2.start()
-                self.messaging_enabled = True
-            command = input("===== Enter any valid commands =====\n")
-            self.command_handler(command)
-    
-    """
-    Handle packets
-    """
-    def packet_handler(self):
-        while self.connection:
-            self.clientSocket.sendall(self.packet.encode())
-            # receive response from the server
-            # 1024 is a suggested packet size, you can specify it as 2048 or others
-            packet = self.clientSocket.recv(1024)
-            receivedpacket = packet.decode()
-            self.packet_handler(receivedpacket)
+            if not self.authenticated:
+                self.clientSocket.sendall(self.packet.encode())
+                # receive response from the server
+                # 1024 is a suggested packet size, you can specify it as 2048 or others
+                packet = self.clientSocket.recv(1024)
+                receivedpacket = packet.decode()
+                self.packetHandler(receivedpacket)
+            else:
+                if not self.messaging_enabled:
+                    self.t2 = Thread(target = self.message_reciever, daemon = True)
+                    self.t2.start()
+                    self.messaging_enabled = True
+                command = input("===== Enter any valid commands =====\n")
+                self.command_handler(command)
 
     """
     Handles commands made from user
@@ -88,6 +80,8 @@ class Client():
             self.block(command)
         elif "startprivate" in command:
             self.startPrivate(command)
+        else:
+            print("Unknown Command")
 
     def startPrivate(self, command):
         self.clientSocket.sendall(command.encode())
@@ -142,11 +136,11 @@ class Client():
     """
     Handles packets from server.
     """
-    def packet_handler(self, receivedpacket):
+    def packetHandler(self, receivedpacket):
         # Break down packets
         packets = receivedpacket.split('-')
         received_function = packets[0]
-        if (len(packets) == 2):
+        if (len(packets) > 1):
             packet_flag = packets[1].lstrip()
         else:
             packet_flag = None
