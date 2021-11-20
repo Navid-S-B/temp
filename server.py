@@ -74,6 +74,8 @@ class ClientThread(Thread):
                 self.logout()
             elif "whoelsesince" == packet:
                 self.whoelsesince(packet)
+            elif "unblock" in packet:
+                self.unblock(packet)
             elif "block" in packet:
                 self.block(packet)
             elif "startprivate" in packet:
@@ -96,6 +98,24 @@ class ClientThread(Thread):
             self.clientMessageSocket.sendall(f"User is nort active to have a private chat with {user}".encode())
             self.clientSocket.sendall("False".encode())
         self.clientSocket.sendall("True".encode())
+
+    """
+    Block users
+    """
+    def unblock(self, packet):
+        info = self.load_info()
+        toBlock = packet.split(' ')[1]
+        # Check
+        if toBlock == self.username:
+            self.clientMessageSocket.sendall("You cannot unblock yourself".encode())
+            return
+        if toBlock not in info.keys():
+            self.clientMessageSocket.sendall("Unblocking invalid user".encode())
+            return
+        blocked = info[self.username]['blocked']
+        blocked.append(toBlock)
+        self.write_info(info)
+        self.clientMessageSocket.sendall(f"You have unblocked {toBlock}".encode())
 
     """
     Block users
@@ -170,9 +190,11 @@ class ClientThread(Thread):
         global CLIENTSOCKETS
         isBlocked = False
         for key in CLIENTSOCKETS.keys():
-            if self.username not in info[key]['blocked'] and self.username != key:
+            if (self.username not in info[key]['blocked']
+                and not key in info[self.username]['blocked']
+                and self.username != key):
                 self.send_message(CLIENTSOCKETS[key], self.username, message)
-            elif self.username in info[key]['blocked']:
+            elif self.username in info[key]['blocked'] or key in info[self.username]['blocked']:
                 isBlocked = True
         if isBlocked:
             self.clientMessageSocket.sendall("Your broadcast could not reach all users".encode())
@@ -208,7 +230,8 @@ class ClientThread(Thread):
                 info[user[0]] = {
                     "isActive": False,
                     "messages": {},
-                    "blocked": []
+                    "blocked": [],
+                    'lastLoggedOn': None
                 }
         # Re-write info
         with data_lock:
@@ -354,7 +377,7 @@ class ClientThread(Thread):
         f = open("credentials.txt", 'r+')
         match_username = False
         match_password = False
-        while (i < 3):
+        while (True):
             # Convert json
             self.data = self.clientSocket.recv(1024)
             self.data = self.data.decode()
@@ -375,6 +398,7 @@ class ClientThread(Thread):
                 if match_username:
                     packet = sub_packet + ' - ' + "Invalid Password. Please try again"
                     self.clientSocket.send(packet.encode())
+                    i += 1
                     break
             if not match_username:
                 packet = sub_packet + ' - ' + "Welcome New User!"
@@ -383,8 +407,9 @@ class ClientThread(Thread):
                     f.write(f"\n{temp_username},{temp_password}")
                 return
             # Reset variables
-            i += 1
             f.seek(0)
+            if i == 3:
+                break
         # Timeout
         f.close()
         packet = "timeout - Your account is blocked temporarily"
